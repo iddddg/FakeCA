@@ -1,4 +1,4 @@
-module fakeca
+module github.com/iddddg/FakeCA
 
 go 1.27.3
 

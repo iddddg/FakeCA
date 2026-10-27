@@ -16,7 +16,7 @@ import (
 	"strings"
 	"time"
 
-	"fakeca/internal/catalog"
+	"github.com/iddddg/FakeCA/internal/catalog"
 	pkcs12 "software.sslmate.com/src/go-pkcs12"
 )
 

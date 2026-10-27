@@ -1,17 +1,87 @@
+# Build outputs and local test/runtime data.
 /.cache/
 /bin/
 /out/
+/release/
+/releases/
+/dist/
+/tmp/
+/temp/
+*.exe
+*.dll
+*.so
+*.dylib
 *.test
-/web/node_modules/
+*.out
+coverage/
+coverage.*
+*.prof
+*.pprof
+fakeca
+fakeca-windows-*
+fakeca-linux-*
+fakeca-darwin-*
+*.zip
+*.tar
+*.tar.gz
+*.tgz
 
-# Local audit notes and generated private identity files.
-/QA.md
+# Dependency caches. Keep lockfiles and internal/webui/dist tracked.
+node_modules/
+.npm/
+.pnpm-store/
+web/.vite/
+
+# Generated identities, certificate packages and signing artifacts.
 *.key
 *.p12
 *.pfx
+*.jks
+*.keystore
+*.csr
+*.jar
+*.war
+*.msi
+*.msix
+*.dmg
+*.app/
+private*.pem
+privkey*.pem
 password.txt
+cert.pem
+leaf.pem
+ca.pem
+chain.pem
+issuers.pem
+issuing-ca.pem
+fullchain.pem
+intermediates.pem
+root.pem
+chain-with-root.pem
+fullchain-with-root.pem
+report.json
+registry.json
 
-# Local editor and operating system files.
+# Local audit notes and secrets. Commit examples, never real .env values.
+/QA.md
+.env
+.env.*
+!.env.example
+!.env.*.example
+
+# Editor, operating system and runtime files.
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
 .DS_Store
+._*
 Thumbs.db
+Desktop.ini
 *.log
+*.pid
+*.tmp
+*.bak
+__pycache__/
+*.pyc

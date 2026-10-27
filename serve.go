@@ -10,8 +10,8 @@ import (
 	"os"
 	"os/signal"
 
-	"fakeca/internal/catalog"
-	"fakeca/internal/lab"
+	"github.com/iddddg/FakeCA/internal/catalog"
+	"github.com/iddddg/FakeCA/internal/lab"
 )
 
 func list(args []string) error {

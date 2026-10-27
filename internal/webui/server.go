@@ -23,8 +23,8 @@ import (
 	"sync"
 	"time"
 
-	"fakeca/internal/catalog"
-	"fakeca/internal/lab"
+	"github.com/iddddg/FakeCA/internal/catalog"
+	"github.com/iddddg/FakeCA/internal/lab"
 )
 
 type Artifact struct {

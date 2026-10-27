@@ -9,8 +9,8 @@ import (
 	"testing"
 	"time"
 
-	"fakeca/internal/catalog"
-	"fakeca/internal/lab"
+	"github.com/iddddg/FakeCA/internal/catalog"
+	"github.com/iddddg/FakeCA/internal/lab"
 )
 
 func captureCLI(t *testing.T, args ...string) (string, error) {

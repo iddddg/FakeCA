@@ -10,8 +10,8 @@ import (
 	"strings"
 	"time"
 
-	"fakeca/internal/catalog"
-	"fakeca/internal/lab"
+	"github.com/iddddg/FakeCA/internal/catalog"
+	"github.com/iddddg/FakeCA/internal/lab"
 )
 
 const usage = `🔎 FakeCA — 内网证书与软件签名信任验证工具

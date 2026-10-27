@@ -13,7 +13,7 @@ import (
 	"runtime"
 	"time"
 
-	"fakeca/internal/webui"
+	"github.com/iddddg/FakeCA/internal/webui"
 )
 
 func web(args []string) error {

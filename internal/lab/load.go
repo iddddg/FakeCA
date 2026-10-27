@@ -13,7 +13,7 @@ import (
 	"strings"
 	"time"
 
-	"fakeca/internal/catalog"
+	"github.com/iddddg/FakeCA/internal/catalog"
 )
 
 type Bundle struct {

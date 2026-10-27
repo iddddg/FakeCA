@@ -1,3 +1,10 @@
-# Keep shell scripts portable, including checkouts with core.autocrlf=true.
+# Consistent text encoding/newlines across Windows, Linux and macOS.
+* text=auto eol=lf
 *.sh text eol=lf
 *.bat text eol=crlf
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.gif binary
+*.ico binary
+*.pdf binary

@@ -198,7 +198,7 @@ fakeca serve --bundle out/tls-test --listen 192.168.10.20:8443
 fakeca sign --type jar --bundle out/jar-test --input test.jar --output out/signed.jar
 fakeca help generate</pre><h3>📁 当前 Web 工作目录</h3><code class="break-anywhere">{{ directory }}</code><p class="field-hint">上传文件、自动生成证书及历史索引保存在此。路径参数指向运行 FakeCA 的服务器，不是浏览器所在设备。</p></section>
         </template>
-        <footer class="footer">FakeCA / Trust Verification Lab<span>时间按浏览器本地时区显示 · 测试产物生成成功，不等于信任验证通过。</span></footer>
+        <footer class="footer">FakeCA / Trust Verification Lab<a href="/third-party-notices.txt" target="_blank" rel="noopener noreferrer">许可与第三方声明</a><span>时间按浏览器本地时区显示 · 测试产物生成成功，不等于信任验证通过。</span></footer>
       </div>
     </main>
   </div>
