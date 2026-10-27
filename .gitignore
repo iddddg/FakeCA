@@ -1,0 +1,17 @@
+/.cache/
+/bin/
+/out/
+*.test
+/web/node_modules/
+
+# Local audit notes and generated private identity files.
+/QA.md
+*.key
+*.p12
+*.pfx
+password.txt
+
+# Local editor and operating system files.
+.DS_Store
+Thumbs.db
+*.log
