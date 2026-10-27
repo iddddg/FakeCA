@@ -1,0 +1,161 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: 'Existing version tag, for example v1.0.0 or v1.1.0-rc.1'
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: release-${{ inputs.tag || github.ref_name }}
+  cancel-in-progress: false
+
+env:
+  RELEASE_TAG: ${{ inputs.tag || github.ref_name }}
+
+jobs:
+  build:
+    name: Test, build and package
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    outputs:
+      tag: ${{ steps.source.outputs.tag }}
+      commit: ${{ steps.source.outputs.commit }}
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          ref: ${{ inputs.tag || github.ref }}
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Validate tag and source
+        id: source
+        shell: bash
+        run: |
+          python3 scripts/package_release.py --version "$RELEASE_TAG" --validate-only
+          commit=$(git rev-parse HEAD)
+          test "$(git rev-parse --verify "refs/tags/${RELEASE_TAG}^{commit}")" = "$commit"
+          echo "tag=$RELEASE_TAG" >> "$GITHUB_OUTPUT"
+          echo "commit=$commit" >> "$GITHUB_OUTPUT"
+      - uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16 # v6
+        with:
+          go-version-file: go.mod
+          cache: true
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
+        with:
+          node-version: '24'
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+      - uses: actions/setup-java@b6effb05e454b25005698d916606bdc6ffcbf961 # v5
+        with:
+          distribution: temurin
+          java-version: '17'
+      - name: Build embedded frontend
+        run: |
+          npm --prefix web ci
+          npm --prefix web run build
+          git diff --exit-code -- internal/webui/dist
+          cmp web/public/third-party-notices.txt internal/webui/dist/third-party-notices.txt
+      - name: Verify Go and run tests with JAR integration
+        shell: bash
+        run: |
+          go mod verify
+          go vet ./...
+          FAKECA_JARSIGNER="$(command -v jarsigner)" go test ./... -count=1
+      - name: Build six targets
+        run: sh build.sh all --out bin/release/raw
+      - name: Smoke test Linux executable
+        run: |
+          bin/release/raw/fakeca-linux-amd64 --help
+          bin/release/raw/fakeca-linux-amd64 list --json > "$RUNNER_TEMP/catalog.json"
+          python3 -c 'import json,sys; assert len(json.load(open(sys.argv[1]))) == 24' "$RUNNER_TEMP/catalog.json"
+      - name: Package and check provenance
+        run: python3 scripts/package_release.py --version "$RELEASE_TAG"
+      - uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6
+        with:
+          name: release-${{ steps.source.outputs.tag }}
+          path: bin/release/assets/*
+          if-no-files-found: error
+          overwrite: true
+          retention-days: 7
+
+  publish:
+    name: Verify uploads and publish
+    needs: build
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    permissions:
+      contents: write
+    env:
+      GH_TOKEN: ${{ github.token }}
+      GH_REPO: ${{ github.repository }}
+      RELEASE_TAG: ${{ needs.build.outputs.tag }}
+      RELEASE_COMMIT: ${{ needs.build.outputs.commit }}
+    steps:
+      - uses: actions/download-artifact@018cc2cf5baa6db3ef3c5f8a56943fffe632ef53 # v6
+        with:
+          name: release-${{ needs.build.outputs.tag }}
+          path: release-assets
+      - name: Create draft, upload and publish
+        shell: bash
+        run: |
+          set -euo pipefail
+          (cd release-assets && sha256sum -c SHA256SUMS.txt)
+          shopt -s nullglob
+          assets=(release-assets/*.zip release-assets/*.tar.gz release-assets/SHA256SUMS.txt)
+          test "${#assets[@]}" -eq 7
+          marker="<!-- fakeca-release-commit: ${RELEASE_COMMIT} -->"
+          verify_remote() {
+            gh release download "$RELEASE_TAG" --pattern '*' --dir remote-verify
+            diff release-assets/SHA256SUMS.txt remote-verify/SHA256SUMS.txt
+            diff <(find release-assets -maxdepth 1 -type f -printf '%f\n' | sort) <(find remote-verify -maxdepth 1 -type f -printf '%f\n' | sort)
+            (cd remote-verify && sha256sum -c SHA256SUMS.txt)
+          }
+          if state=$(gh release view "$RELEASE_TAG" --json isDraft --jq .isDraft 2>release-query.log); then
+            gh release view "$RELEASE_TAG" --json body --jq .body > existing-notes.md
+            grep -Fq -- "$marker" existing-notes.md || { echo 'Existing release has a different source marker; refusing to modify it.'; exit 1; }
+            if test "$state" = false; then
+              verify_remote
+              echo 'Release already published; all assets verified, no changes made.'
+              exit 0
+            fi
+          else
+            cat > release-notes.md <<EOF
+          ## 📦 FakeCA ${RELEASE_TAG}
+
+          - 🌐 TLS 域名/IP/通配符证书、HTTPS 测试端点与 Web 工作台。
+          - ✍️ Windows Authenticode 与 JAR 签名，8 组涉事 CA 身份及 24 条测试路径。
+          - 🖥️ Windows、Linux、macOS 的 amd64/arm64 共六种产物。
+          - 📋 每包附带使用说明、MIT 许可、完整第三方声明及 release-info.json。
+
+          **下载校验：** SHA256SUMS.txt 提供六个压缩包的 SHA-256。
+          **源码提交：** ${RELEASE_COMMIT}
+
+          产物未进行发布者签名或 macOS 公证。签名功能仍需自行安装 osslsigncode/JDK；请按目标设备原有信任策略进行负向测试。
+
+          ${marker}
+          EOF
+            gh release create "$RELEASE_TAG" --verify-tag --draft --title "FakeCA $RELEASE_TAG" --notes-file release-notes.md --generate-notes
+          fi
+          gh release view "$RELEASE_TAG" --json assets --jq '.assets[].name' > existing-assets.txt
+          for asset in "${assets[@]}"; do
+            if grep -Fxq -- "$(basename "$asset")" existing-assets.txt; then
+              echo "Keeping existing asset: $(basename "$asset")"
+            else
+              gh release upload "$RELEASE_TAG" "$asset"
+            fi
+          done
+          verify_remote
+          if [[ "$RELEASE_TAG" == *-* ]]; then
+            gh release edit "$RELEASE_TAG" --draft=false --prerelease --latest=false
+          else
+            gh release edit "$RELEASE_TAG" --draft=false --latest
+          fi
+          gh release view "$RELEASE_TAG" --json url --jq .url >> "$GITHUB_STEP_SUMMARY"

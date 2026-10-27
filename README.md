@@ -30,6 +30,8 @@ FakeCA 是面向授权内网测试的 CLI 与 Web 工作台，支持 TLS 证书�
 
 ## 快速开始
 
+不需要自行编译时，可以在 [Releases](https://github.com/iddddg/FakeCA/releases) 下载对应系统和架构的压缩包，解压后运行 `fakeca.exe web` 或 `./fakeca web`。每个包包含许可证、第三方声明及构建元信息，可用同一版本的 `SHA256SUMS.txt` 核对下载内容。
+
 ### 1. 获取源码
 
 ```sh
@@ -225,6 +227,8 @@ ssl_certificate_key /etc/nginx/fakeca/private.key;
 本工具的终端证书不包含叶级 OCSP/CDP 或 CT SCT，不伪造吊销服务，也不把 Go `x509.Verify` 的结果当作设备吊销机制的证明。更详细的验证命令与限制见 [使用手册](docs/USAGE.md)。
 
 ## 开发与贡献
+
+版本发布使用标签触发的 GitHub Actions，自动测试、构建六个平台、打包及上传 Release；具体操作和重跑规则见 [发布指南](docs/RELEASING.md)。
 
 项目目录、前端重建、测试方式及提交约定见 [CONTRIBUTING.md](CONTRIBUTING.md)。安全相关问题请参阅 [SECURITY.md](SECURITY.md)。
 
