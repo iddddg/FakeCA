@@ -18,6 +18,7 @@ import (
 
 type Bundle struct {
 	Report  Report
+	Files   BundleFiles
 	Pair    tls.Certificate
 	Leaf    *x509.Certificate
 	Parents []*x509.Certificate
@@ -39,8 +40,9 @@ func LoadBundle(path string) (Bundle, error) {
 		return b, fmt.Errorf("证书包报告不是有效的 JSON：%w", err)
 	}
 	r := b.Report
-	if r.Version != 1 {
-		return b, fmt.Errorf("不支持的证书包报告版本：%d", r.Version)
+	b.Files, err = BundleFilesForVersion(r.Version)
+	if err != nil {
+		return b, err
 	}
 	if r.Type != "tls" && r.Type != "software" && r.Type != "jar" {
 		return b, fmt.Errorf("证书包类型无效：%q", r.Type)
@@ -63,9 +65,10 @@ func LoadBundle(path string) (Bundle, error) {
 	if r.CA.SHA256 != ca.SHA256 || r.CA.SPKISHA256 != ca.SPKISHA256 || r.CA.Usage != ca.Usage {
 		return b, fmt.Errorf("报告中的 CA 身份或指纹与内置证书不一致")
 	}
-	b.Pair, err = tls.LoadX509KeyPair(filepath.Join(path, "chain.pem"), filepath.Join(path, "leaf.key"))
+	f := b.Files
+	b.Pair, err = tls.LoadX509KeyPair(filepath.Join(path, f.FullChain), filepath.Join(path, f.PrivateKey))
 	if err != nil {
-		return b, fmt.Errorf("加载 chain.pem 或 leaf.key 失败，证书与私钥必须匹配：%w", err)
+		return b, fmt.Errorf("加载 %s 或 %s 失败，证书与私钥必须匹配：%w", f.FullChain, f.PrivateKey, err)
 	}
 	b.Leaf, err = x509.ParseCertificate(b.Pair.Certificate[0])
 	if err != nil {
@@ -73,16 +76,16 @@ func LoadBundle(path string) (Bundle, error) {
 	}
 	b.Parents = append([]*x509.Certificate{ca.Cert}, ca.Parents...)
 	expected := map[string][]*x509.Certificate{
-		"leaf.pem": {b.Leaf}, "ca.pem": {ca.Cert}, "root.pem": {ca.Parents[len(ca.Parents)-1]},
-		"issuers.pem":         b.Parents[:len(b.Parents)-1],
-		"chain-with-root.pem": append([]*x509.Certificate{b.Leaf}, b.Parents...),
+		f.Certificate: {b.Leaf}, f.IssuingCA: {ca.Cert}, f.Root: {ca.Parents[len(ca.Parents)-1]},
+		f.Intermediates:     b.Parents[:len(b.Parents)-1],
+		f.FullChainWithRoot: append([]*x509.Certificate{b.Leaf}, b.Parents...),
 	}
 	if len(b.Pair.Certificate) != len(b.Parents) {
-		return b, fmt.Errorf("chain.pem 的证书数量不符合所选链路")
+		return b, fmt.Errorf("%s 的证书数量不符合所选链路", f.FullChain)
 	}
 	for i, c := range b.Parents[:len(b.Parents)-1] {
 		if !bytes.Equal(b.Pair.Certificate[i+1], c.Raw) {
-			return b, fmt.Errorf("chain.pem 的第 %d 张证书与所选链路不一致", i+2)
+			return b, fmt.Errorf("%s 的第 %d 张证书与所选链路不一致", f.FullChain, i+2)
 		}
 	}
 	for name, want := range expected {

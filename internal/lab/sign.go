@@ -136,7 +136,7 @@ func Sign(o SignOptions) error {
 		env = append(filtered, "FAKECA_SIGN_PASSWORD="+password)
 		args = []string{"-J-Dfile.encoding=UTF-8", "-J-Dsun.stdout.encoding=UTF-8", "-J-Dsun.stderr.encoding=UTF-8", "-keystore", filepath.Join(bundle, "identity.p12"), "-storetype", "PKCS12", "-storepass:env", "FAKECA_SIGN_PASSWORD", "-keypass:env", "FAKECA_SIGN_PASSWORD", "-sigalg", "SHA256withRSA", "-digestalg", "SHA-256", "-signedjar", staged, input, "1"}
 	} else {
-		args = []string{"sign", "-certs", filepath.Join(bundle, "chain.pem"), "-key", filepath.Join(bundle, "leaf.key"), "-h", "sha256", "-n", "FakeCA internal negative trust test", "-in", input, "-out", staged}
+		args = []string{"sign", "-certs", filepath.Join(bundle, loaded.Files.FullChain), "-key", filepath.Join(bundle, loaded.Files.PrivateKey), "-h", "sha256", "-n", "FakeCA internal negative trust test", "-in", input, "-out", staged}
 	}
 	parent := o.Context
 	if parent == nil {

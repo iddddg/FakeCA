@@ -4,12 +4,134 @@ import (
 	"archive/zip"
 	"crypto/x509"
 	"encoding/json"
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
 	"time"
 )
+
+func convertLegacyBundle(t *testing.T, path string) {
+	t.Helper()
+	current, _ := BundleFilesForVersion(CurrentBundleVersion)
+	legacy, _ := BundleFilesForVersion(1)
+	for i, name := range current.Names() {
+		oldName := legacy.Names()[i]
+		if name != oldName {
+			if err := os.Rename(filepath.Join(path, name), filepath.Join(path, oldName)); err != nil {
+				t.Fatal(err)
+			}
+		}
+	}
+	data, err := os.ReadFile(filepath.Join(path, "report.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	var report Report
+	if err = json.Unmarshal(data, &report); err != nil {
+		t.Fatal(err)
+	}
+	report.Version = 1
+	data, err = json.Marshal(report)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err = os.WriteFile(filepath.Join(path, "report.json"), data, 0600); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestLegacyBundleCompatibility(t *testing.T) {
+	for _, test := range []struct{ kind, ca, chain, usage string }{
+		{"tls", "dv-tls-g3b", "ecc", "tls"},
+		{"tls", "dv-tls-g3b", "native", "tls"},
+		{"tls", "dv-tls-g3b", "aaa", "tls"},
+		{"software", "ov-cs-g3b", "aaa", "codesign"},
+		{"jar", "ov-cs-g3b", "aaa", "codesign"},
+	} {
+		t.Run(test.kind+"/"+test.chain, func(t *testing.T) {
+			path := filepath.Join(t.TempDir(), "legacy")
+			opts := Options{Type: test.kind, Subject: "Legacy compatibility", ValidFor: time.Hour, Out: path}
+			if test.kind == "tls" {
+				opts.IPs = []string{"127.0.0.1"}
+			}
+			if _, err := Generate(entry(t, test.ca, test.chain, test.usage), opts); err != nil {
+				t.Fatal(err)
+			}
+			convertLegacyBundle(t, path)
+			before, err := os.ReadFile(filepath.Join(path, "report.json"))
+			if err != nil {
+				t.Fatal(err)
+			}
+			loaded, err := LoadBundle(path)
+			if err != nil || loaded.Report.Version != 1 || loaded.Files.FullChain != "chain.pem" {
+				t.Fatalf("legacy load: %v", err)
+			}
+			switch test.kind {
+			case "tls":
+				s, err := StartTLS(path, "127.0.0.1:0", nil)
+				if err != nil {
+					t.Fatal(err)
+				}
+				if err = s.Stop(); err != nil {
+					t.Fatal(err)
+				}
+			case "software":
+				testSoftware(t, path)
+			case "jar":
+				testJAR(t, path)
+			}
+			after, err := os.ReadFile(filepath.Join(path, "report.json"))
+			if err != nil || string(before) != string(after) {
+				t.Fatal("legacy report changed")
+			}
+			if _, err = os.Stat(filepath.Join(path, "cert.pem")); !os.IsNotExist(err) {
+				t.Fatal("legacy bundle was renamed")
+			}
+		})
+	}
+}
+
+func TestBundleVersionCannotGuessLayout(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "bundle")
+	report, err := Generate(entry(t, "dv-tls-g3b", "ecc", "tls"), Options{Type: "tls", IPs: []string{"127.0.0.1"}, Subject: "Version test", ValidFor: time.Hour, Out: path})
+	if err != nil {
+		t.Fatal(err)
+	}
+	writeVersion := func(version int) {
+		t.Helper()
+		report.Version = version
+		data, err := json.Marshal(report)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if err = os.WriteFile(filepath.Join(path, "report.json"), data, 0600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	for _, version := range []int{1, 0, 99} {
+		t.Run(fmt.Sprint(version), func(t *testing.T) {
+			writeVersion(version)
+			if _, err := LoadBundle(path); err == nil {
+				t.Fatal("accepted unknown version or mismatched layout")
+			}
+		})
+	}
+	writeVersion(CurrentBundleVersion)
+	convertLegacyBundle(t, path)
+	writeVersion(CurrentBundleVersion)
+	if _, err := LoadBundle(path); err == nil {
+		t.Fatal("accepted legacy files as current layout")
+	}
+	writeVersion(1)
+	if err = os.WriteFile(filepath.Join(path, "chain.pem"), []byte("corrupt"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := LoadBundle(path); err == nil {
+		t.Fatal("accepted corrupt legacy chain")
+	}
+}
 
 func TestBundleIntegrity(t *testing.T) {
 	e := entry(t, "dv-tls-g3b", "ecc", "tls")
@@ -21,7 +143,7 @@ func TestBundleIntegrity(t *testing.T) {
 	if _, err = LoadBundle(path); err != nil {
 		t.Fatal(err)
 	}
-	for _, name := range []string{"leaf.pem", "ca.pem", "root.pem", "issuers.pem", "chain-with-root.pem", "chain.pem", "leaf.key"} {
+	for _, name := range []string{"cert.pem", "issuing-ca.pem", "root.pem", "intermediates.pem", "fullchain-with-root.pem", "fullchain.pem", "private.key"} {
 		t.Run(name, func(t *testing.T) {
 			p := filepath.Join(path, name)
 			original, err := os.ReadFile(p)

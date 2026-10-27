@@ -619,11 +619,13 @@ func (a *App) stopService(w http.ResponseWriter, r *http.Request) {
 	respond(w, 200, map[string]bool{"stopped": true})
 }
 
-var bundleNames = []string{"leaf.pem", "leaf.key", "ca.pem", "chain.pem", "issuers.pem", "root.pem", "chain-with-root.pem", "identity.p12", "password.txt", "report.json"}
-
-func artifactList(b Bundle) []Artifact {
+func artifactList(b Bundle) ([]Artifact, error) {
+	files, err := lab.BundleFilesForVersion(b.Report.Version)
+	if err != nil {
+		return nil, err
+	}
 	out := []Artifact{}
-	for _, name := range bundleNames {
+	for _, name := range files.Names() {
 		path := filepath.Join(b.Path, name)
 		if info, err := os.Stat(path); err == nil && info.Mode().IsRegular() {
 			out = append(out, Artifact{Name: name, Path: path, Size: info.Size()})
@@ -633,7 +635,7 @@ func artifactList(b Bundle) []Artifact {
 		s.Name = fmt.Sprintf("signed-%d-%s", i, filepath.Base(strings.ReplaceAll(s.Name, "\\", "/")))
 		out = append(out, s)
 	}
-	return out
+	return out, nil
 }
 func (a *App) files(w http.ResponseWriter, r *http.Request) {
 	b, err := a.getBundle(r.PathValue("id"))
@@ -641,7 +643,12 @@ func (a *App) files(w http.ResponseWriter, r *http.Request) {
 		failure(w, 404, err)
 		return
 	}
-	respond(w, 200, artifactList(b))
+	list, err := artifactList(b)
+	if err != nil {
+		failure(w, 400, err)
+		return
+	}
+	respond(w, 200, list)
 }
 func (a *App) download(w http.ResponseWriter, r *http.Request) {
 	b, err := a.getBundle(r.PathValue("id"))
@@ -649,7 +656,12 @@ func (a *App) download(w http.ResponseWriter, r *http.Request) {
 		failure(w, 404, err)
 		return
 	}
-	for _, file := range artifactList(b) {
+	list, err := artifactList(b)
+	if err != nil {
+		failure(w, 400, err)
+		return
+	}
+	for _, file := range list {
 		if file.Name == r.PathValue("name") {
 			downloadFile(w, r, file)
 			return
@@ -683,6 +695,11 @@ func (a *App) archive(w http.ResponseWriter, r *http.Request) {
 		failure(w, 404, err)
 		return
 	}
+	list, err := artifactList(b)
+	if err != nil {
+		failure(w, 400, err)
+		return
+	}
 	temp, err := os.CreateTemp(a.dir, "download-*.zip")
 	if err != nil {
 		failure(w, 500, err)
@@ -691,7 +708,7 @@ func (a *App) archive(w http.ResponseWriter, r *http.Request) {
 	defer os.Remove(temp.Name())
 	defer temp.Close()
 	z := zip.NewWriter(temp)
-	for _, file := range artifactList(b) {
+	for _, file := range list {
 		input, e := os.Open(file.Path)
 		if e != nil {
 			z.Close()

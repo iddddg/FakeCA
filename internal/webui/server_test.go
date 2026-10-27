@@ -104,6 +104,9 @@ func TestWebBundleLifecycle(t *testing.T) {
 		t.Fatal("accepted invalid domain")
 	}
 	b := parseBundle(t, request(t, app, token, "POST", "/api/generate", map[string]string{"type": "tls", "domain": "*.demo.com,demo.com", "ip": "127.0.0.1", "ca": "dv-tls-g3b", "chain": "aaa"}))
+	if b.Report.Version != 2 {
+		t.Fatal("new bundle is not version 2")
+	}
 	if b.Report.NotAfter.Sub(b.Report.Created) != 365*24*time.Hour {
 		t.Fatal("default duration changed")
 	}
@@ -111,10 +114,13 @@ func TestWebBundleLifecycle(t *testing.T) {
 		t.Fatal("generation parameters lost")
 	}
 	r := request(t, app, token, "GET", "/api/files/"+b.ID, nil)
-	if r.Code != 200 || !strings.Contains(r.Body.String(), "leaf.key") {
+	if r.Code != 200 || !strings.Contains(r.Body.String(), "private.key") {
 		t.Fatal("files missing")
 	}
-	r = request(t, app, token, "GET", "/api/download/"+b.ID+"/leaf.pem", nil)
+	if strings.Contains(r.Body.String(), "leaf.key") || !strings.Contains(r.Body.String(), "fullchain.pem") {
+		t.Fatal("file list uses wrong layout")
+	}
+	r = request(t, app, token, "GET", "/api/download/"+b.ID+"/cert.pem", nil)
 	if r.Code != 200 || !strings.Contains(r.Body.String(), "BEGIN CERTIFICATE") {
 		t.Fatal("certificate download failed")
 	}
@@ -270,7 +276,7 @@ func TestExplicitEmptyParametersAndCorruptHistory(t *testing.T) {
 func TestTamperedImportRejected(t *testing.T) {
 	app, token, _ := setup(t)
 	b := parseBundle(t, request(t, app, token, "POST", "/api/generate", map[string]string{"type": "tls", "domain": "test.invalid"}))
-	if err := os.WriteFile(filepath.Join(b.Path, "leaf.pem"), []byte("corrupt"), 0600); err != nil {
+	if err := os.WriteFile(filepath.Join(b.Path, "cert.pem"), []byte("corrupt"), 0600); err != nil {
 		t.Fatal(err)
 	}
 	r := request(t, app, token, "POST", "/api/import", map[string]string{"path": b.Path})
@@ -280,5 +286,66 @@ func TestTamperedImportRejected(t *testing.T) {
 	r = request(t, app, token, "POST", "/api/services", map[string]string{"bundle_id": b.ID, "listen": "127.0.0.1:0"})
 	if r.Code != 400 {
 		t.Fatal("service accepted corrupt certificate")
+	}
+}
+
+func TestLegacyBundleDownloadsAndService(t *testing.T) {
+	app, token, _ := setup(t)
+	b := parseBundle(t, request(t, app, token, "POST", "/api/generate", map[string]string{"type": "tls", "ip": "127.0.0.1", "chain": "ecc"}))
+	for current, legacy := range map[string]string{
+		"cert.pem": "leaf.pem", "private.key": "leaf.key", "issuing-ca.pem": "ca.pem",
+		"fullchain.pem": "chain.pem", "intermediates.pem": "issuers.pem", "fullchain-with-root.pem": "chain-with-root.pem",
+	} {
+		if err := os.Rename(filepath.Join(b.Path, current), filepath.Join(b.Path, legacy)); err != nil {
+			t.Fatal(err)
+		}
+	}
+	b.Report.Version = 1
+	data, err := json.Marshal(b.Report)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err = os.WriteFile(filepath.Join(b.Path, "report.json"), data, 0600); err != nil {
+		t.Fatal(err)
+	}
+	imported := parseBundle(t, request(t, app, token, "POST", "/api/import", map[string]string{"path": b.Path}))
+	if imported.ID != b.ID || imported.Report.Version != 1 {
+		t.Fatal("legacy import failed")
+	}
+	r := request(t, app, token, "GET", "/api/files/"+b.ID, nil)
+	if r.Code != 200 || !strings.Contains(r.Body.String(), "leaf.key") || strings.Contains(r.Body.String(), "private.key") {
+		t.Fatal("wrong legacy file list")
+	}
+	r = request(t, app, token, "GET", "/api/download/"+b.ID+"/leaf.pem", nil)
+	if r.Code != 200 || !strings.Contains(r.Body.String(), "BEGIN CERTIFICATE") {
+		t.Fatal("legacy certificate download failed")
+	}
+	if r = request(t, app, token, "GET", "/api/download/"+b.ID+"/cert.pem", nil); r.Code != 404 {
+		t.Fatal("legacy files silently aliased")
+	}
+	r = request(t, app, token, "GET", "/api/archive/"+b.ID, nil)
+	z, err := zip.NewReader(bytes.NewReader(r.Body.Bytes()), int64(r.Body.Len()))
+	if r.Code != 200 || err != nil {
+		t.Fatalf("legacy archive: %v", err)
+	}
+	names := map[string]bool{}
+	for _, file := range z.File {
+		names[file.Name] = true
+	}
+	if !names["chain.pem"] || !names["leaf.key"] || names["fullchain.pem"] || names["private.key"] {
+		t.Fatal("legacy ZIP changed file layout")
+	}
+	r = request(t, app, token, "POST", "/api/services", map[string]string{"bundle_id": b.ID, "listen": "127.0.0.1:0"})
+	if r.Code != 200 {
+		t.Fatal(r.Body)
+	}
+	var service struct {
+		ID string `json:"id"`
+	}
+	if err = json.Unmarshal(r.Body.Bytes(), &service); err != nil {
+		t.Fatal(err)
+	}
+	if r = request(t, app, token, "DELETE", "/api/services/"+service.ID, nil); r.Code != 200 {
+		t.Fatal(r.Body)
 	}
 }

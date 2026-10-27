@@ -221,6 +221,9 @@ func generate(args []string) error {
 		return fmt.Errorf("解析输出目录路径失败：%w", err)
 	}
 	fmt.Printf("✅ 证书包已生成\n  输出目录：%s\n  证书类型：%s\n  选用 CA：%s\n  证书链路：%s\n  生效时间：%s\n  到期时间：%s\n  CA 指纹（SHA-256）：%s\n  终端证书指纹（SHA-256）：%s\n  详细报告：%s\n", abs, typeLabel(*typ), selected.ID, chainLabel(selected.Chain), report.NotBefore.Format(time.RFC3339), report.NotAfter.Format(time.RFC3339), selected.SHA256, report.LeafSHA256, filepath.Join(abs, "report.json"))
+	if *typ == "tls" {
+		fmt.Printf("  🌐 Nginx 证书链：%s\n  🔑 Nginx 私钥：%s\n", filepath.Join(abs, "fullchain.pem"), filepath.Join(abs, "private.key"))
+	}
 	if *input != "" {
 		return lab.Sign(lab.SignOptions{Type: *typ, Bundle: abs, Input: *input, Output: *output, Tool: *tool, Password: pass})
 	}

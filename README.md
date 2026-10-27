@@ -201,17 +201,40 @@ jarsigner 密码通过子进程环境传递，不写入命令行。当前导出 
 
 | 文件 | 内容 |
 |---|---|
-| `leaf.pem`, `leaf.key` | 新生成的终端证书和 PKCS#8 私钥 |
-| `ca.pem` | 选中的真实失守中间 CA 公钥证书 |
-| `chain.pem` | 终端证书和中间链；不含自签名根，适合 TLS 服务/签名工具 |
-| `issuers.pem` | 中间链，不含终端证书和自签名根 |
+| `cert.pem` | 新生成的终端证书 |
+| `private.key` | 与终端证书配对的 PKCS#8 私钥，不是 CA 私钥 |
+| `issuing-ca.pem` | 直接签发终端证书的真实失守中间 CA 公钥证书 |
+| `fullchain.pem` | 终端证书和中间链；不含自签名根，适合 TLS 服务/签名工具 |
+| `intermediates.pem` | 仅中间链，不含终端证书和自签名根 |
 | `root.pem` | 路径末端根证书，仅用于审阅/诊断，不应导入被测设备 |
-| `chain-with-root.pem` | 完整证书链，供离线审阅 |
+| `fullchain-with-root.pem` | 终端证书、中间链和根证书，供离线审阅 |
 | `identity.p12` | 代码签名类型额外输出的 PKCS#12 身份 |
 | `password.txt` | 仅未指定密码环境变量时输出 |
 | `report.json` | CA 身份、用途、链路、序列号、指纹、SAN 和有效期 |
 
 输出目录必须是新目录，现有目录和现有签名输出文件均拒绝覆盖。Unix 使用 0700 目录/0600 文件；Windows 仍继承目录 ACL，应在受限工作目录保存叶私钥和密码。
+
+Nginx 部署使用同一证书包中的以下两个文件，无需额外拼接证书链：
+
+```nginx
+ssl_certificate     /etc/nginx/fakeca/fullchain.pem;
+ssl_certificate_key /etc/nginx/fakeca/private.key;
+```
+
+私钥应放在网站可访问目录之外，并允许 Nginx 主进程读取。IP 访问要求证书 SAN 包含所访问的 IP；域名访问要求匹配 DNS SAN。
+
+新证书包的 `report.json` 使用 `version: 2`。`version: 1` 的旧包仍可导入、下载、启动 TLS 服务和签名，读取及下载时保留旧文件名，不自动改动目录内容：
+
+| 旧包文件名 | 新包文件名 |
+|---|---|
+| `leaf.pem` | `cert.pem` |
+| `leaf.key` | `private.key` |
+| `ca.pem` | `issuing-ca.pem` |
+| `chain.pem` | `fullchain.pem` |
+| `issuers.pem` | `intermediates.pem` |
+| `chain-with-root.pem` | `fullchain-with-root.pem` |
+
+旧包部署 Nginx 时仍使用旧包的 `chain.pem` 和 `leaf.key`。程序通过报告版本选择文件布局，拒绝报告版本与文件名不一致的包；请勿仅修改版本号或手工混合新旧文件。`root.pem`、`identity.p12`、`password.txt` 和 `report.json` 名称保持不变。
 
 ## 如何判断测试结果
 

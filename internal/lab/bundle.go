@@ -169,11 +169,15 @@ func Generate(e catalog.Entry, o Options) (Report, error) {
 	}
 	parents := append([]*x509.Certificate{e.Cert}, e.Parents...)
 	full := append([]*x509.Certificate{leaf}, parents[:len(parents)-1]...)
-	report = Report{Version: 1, Created: now, Type: o.Type, CA: e, LeafSHA256: catalog.Hash(leaf.Raw), LeafSerial: leaf.SerialNumber.Text(16), NotBefore: leaf.NotBefore, NotAfter: leaf.NotAfter, Domains: o.Domains, IPs: o.IPs, Notes: []string{"证书信任负向测试：所选 CA 的私钥已失守，CA 证书已吊销。", "连接失败不等于吊销检查生效：请记录实际验证错误，并测试正常受信任的正向对照端点。", "终端证书不含吊销查询地址或 CT SCT；请检查整条 CA 链，不要通过导入测试根证书使测试通过。"}}
+	report = Report{Version: CurrentBundleVersion, Created: now, Type: o.Type, CA: e, LeafSHA256: catalog.Hash(leaf.Raw), LeafSerial: leaf.SerialNumber.Text(16), NotBefore: leaf.NotBefore, NotAfter: leaf.NotAfter, Domains: o.Domains, IPs: o.IPs, Notes: []string{"证书信任负向测试：所选 CA 的私钥已失守，CA 证书已吊销。", "连接失败不等于吊销检查生效：请记录实际验证错误，并测试正常受信任的正向对照端点。", "终端证书不含吊销查询地址或 CT SCT；请检查整条 CA 链，不要通过导入测试根证书使测试通过。"}}
 	for _, c := range parents {
 		report.ChainSHA256 = append(report.ChainSHA256, catalog.Hash(c.Raw))
 	}
-	contents := map[string][]byte{"leaf.pem": catalog.PEM(leaf), "leaf.key": pem.EncodeToMemory(&pem.Block{Type: "PRIVATE KEY", Bytes: keyDER}), "ca.pem": catalog.PEM(e.Cert), "chain.pem": catalog.PEM(full...), "issuers.pem": catalog.PEM(parents[:len(parents)-1]...), "root.pem": catalog.PEM(parents[len(parents)-1]), "chain-with-root.pem": catalog.PEM(append([]*x509.Certificate{leaf}, parents...)...)}
+	files, err := BundleFilesForVersion(report.Version)
+	if err != nil {
+		return report, err
+	}
+	contents := map[string][]byte{files.Certificate: catalog.PEM(leaf), files.PrivateKey: pem.EncodeToMemory(&pem.Block{Type: "PRIVATE KEY", Bytes: keyDER}), files.IssuingCA: catalog.PEM(e.Cert), files.FullChain: catalog.PEM(full...), files.Intermediates: catalog.PEM(parents[:len(parents)-1]...), files.Root: catalog.PEM(parents[len(parents)-1]), files.FullChainWithRoot: catalog.PEM(append([]*x509.Certificate{leaf}, parents...)...)}
 	if o.Type != "tls" {
 		password := o.Password
 		if password == "" {

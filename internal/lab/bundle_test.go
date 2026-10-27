@@ -41,7 +41,7 @@ func TestTLSBundle(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	pair, err := tls.LoadX509KeyPair(filepath.Join(out, "chain.pem"), filepath.Join(out, "leaf.key"))
+	pair, err := tls.LoadX509KeyPair(filepath.Join(out, "fullchain.pem"), filepath.Join(out, "private.key"))
 	if err != nil {
 		t.Fatal(err)
 	}
