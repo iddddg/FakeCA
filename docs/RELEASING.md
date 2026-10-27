@@ -37,7 +37,7 @@ git push origin v1.0.0
 
 ## 本地打包
 
-需要 Python 3、Go 和干净的已提交工作区：
+需要 Python 3.10+、Go 和干净的已提交工作区：
 
 ```sh
 sh build.sh all --out bin/release/raw

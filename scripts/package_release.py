@@ -10,6 +10,7 @@ from pathlib import Path
 import re
 import stat
 import subprocess
+import sys
 import tarfile
 import time
 import zipfile
@@ -154,6 +155,10 @@ def main():
 
 
 if __name__ == "__main__":
+    # Configure this process only; do not change the shared Windows code page.
+    for stream in (sys.stdout, sys.stderr):
+        if hasattr(stream, "reconfigure"):
+            stream.reconfigure(encoding="utf-8", errors="backslashreplace")
     try:
         main()
     except (ValueError, OSError, subprocess.CalledProcessError) as error:
