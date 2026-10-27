@@ -20,7 +20,45 @@ Linux/macOS 可使用 `go build -o bin/fakeca .`。构建时下载 go.mod 中的
 
 首次构建需要取得项目要求的工具链；离线构建机需预先缓存或安装该版本。工具链选择只作用于本项目，不修改系统默认 Go。
 
-不带参数运行会显示中文应用介绍、命令清单和快速开始示例。也支持 `fakeca --help`、`fakeca -h`、`fakeca help generate`、`fakeca generate --help`。`generate`、`serve`、`sign` 不带参数时显示对应帮助；`list` 不带参数时直接列出 CA。
+### 跨平台构建脚本
+
+Windows 使用 `build.bat`，Linux/macOS 使用 POSIX Shell 脚本 `build.sh`（也可在 Windows 的 Git Bash 中使用）。脚本可从任意工作目录调用，不带参数时构建当前 Go 宿主平台；多个目标用空格分隔，`all` 构建全部六种组合。
+
+```powershell
+# Windows：构建一个或多个目标
+.\build.bat windows-amd64
+.\build.bat windows-amd64 linux-amd64 darwin-arm64
+.\build.bat all --out bin\release
+.\build.bat host --frontend
+.\build.bat --help
+# 自动化读取帮助，不等待按键
+.\build.bat --help --no-pause
+```
+
+```sh
+# Linux/macOS：使用相同的目标和参数
+sh build.sh linux-amd64 darwin-arm64
+sh build.sh all --out bin/release
+sh build.sh host --frontend
+sh build.sh --list
+```
+
+| 目标 | 系统与架构 | 默认输出 |
+|---|---|---|
+| `windows-amd64` | Windows x64 | `bin/fakeca-windows-amd64.exe` |
+| `windows-arm64` | Windows ARM64 | `bin/fakeca-windows-arm64.exe` |
+| `linux-amd64` | Linux x64 | `bin/fakeca-linux-amd64` |
+| `linux-arm64` | Linux ARM64 | `bin/fakeca-linux-arm64` |
+| `darwin-amd64` | macOS Intel | `bin/fakeca-darwin-amd64` |
+| `darwin-arm64` | macOS Apple Silicon | `bin/fakeca-darwin-arm64` |
+
+`--out DIR` 指定输出目录，相对路径以项目根目录为基准；同名构建产物会更新。`--frontend` 先执行 `npm ci` 和 `npm run build`，需要 Node 22+ 与 npm；默认复用已提交的网页资源。脚本使用 `CGO_ENABLED=0`、`-trimpath` 和 `-ldflags="-s -w"`，不改变调用终端的环境变量。构建遇错即停止，已成功的其他目标产物保留。
+
+Windows 的 `--help`、`-h`、`/?` 输出帮助后默认等待回车，便于在 CMD 中阅读；回车后返回命令行，帮助内容仍保留。普通构建和 `--list` 默认不暂停；需要保留临时窗口查看构建结果时使用 `--pause`。自动化、CI 或重定向帮助文本时可使用 `--no-pause`，该参数优先于暂停设置；检测到输入被重定向时也不暂停。BAT 在单文件内调用 Windows 自带 PowerShell 处理参数和 Unicode 输出，不切换控制台代码页，避免 CMD 清屏及中文解析问题。
+
+产物是命令行可执行文件，包含内嵌 Web，不生成安装包，也不执行测试、Windows 代码签名或 macOS 公证。跨平台构建不要求目标系统的编译器；运行软件/JAR 签名功能时，目标设备仍需安装对应平台的 osslsigncode/JDK。复制到 Linux/macOS 后若执行权限丢失，可运行 `chmod +x 文件名`。
+
+FakeCA 程序不带参数运行会显示中文应用介绍、命令清单和快速开始示例。也支持 `fakeca --help`、`fakeca -h`、`fakeca help generate`、`fakeca generate --help`。`generate`、`serve`、`sign` 不带参数时显示对应帮助；`list` 不带参数时直接列出 CA。
 
 CLI 自有提示统一使用中文，以 ✅ 标记操作完成、ℹ️ 标记操作说明、❌ 标记失败；HTTPS 测试页使用 ⚠️ 提示当前为负向信任测试。成功生成或签名不代表目标设备应信任该产物。JSON 字段、命令参数和 CA ID 保持稳定；底层系统及外部签名工具的原始诊断保留，方便排障。请使用支持 UTF-8 的终端查看中文和表情。
 
@@ -53,7 +91,7 @@ CLI 自有提示统一使用中文，以 ✅ 标记操作完成、ℹ️ 标记�
 
 ### 修改网页与重新构建
 
-仓库已包含 `internal/webui/dist/` 生产资源，所以直接 `go build` 即可编译完整程序。修改 `web/src/` 后，需先构建前端再构建 Go（构建机使用 Node 18/20/22/24 均可，推荐受支持的较新版本）：
+仓库已包含 `internal/webui/dist/` 生产资源，所以直接 `go build` 即可编译完整程序。修改 `web/src/` 后，需先构建前端再构建 Go；前端依赖要求 Node 22 或更高版本，以及 npm：
 
 ```powershell
 cd web
@@ -212,6 +250,7 @@ foreach ($ca in $paths) {
 | 路径 | 用途 |
 |---|---|
 | `main.go`、`help.go`、`serve.go`、`web.go` | CLI 入口、中文帮助及服务命令 |
+| `build.bat`、`build.sh`、`.gitattributes` | 跨平台构建入口及脚本换行约定 |
 | `internal/catalog/` | 公开 CA 证书、来源说明、固定指纹及链路选择 |
 | `internal/lab/` | 证书生成、证书包校验、文件签名及 TLS 测试端点 |
 | `internal/webui/` | 管理 API 与通过 Go embed 内嵌的网页生产资源 |

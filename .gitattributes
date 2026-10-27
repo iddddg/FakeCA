@@ -1,0 +1,3 @@
+# Keep shell scripts portable, including checkouts with core.autocrlf=true.
+*.sh text eol=lf
+*.bat text eol=crlf
